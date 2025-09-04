@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Property Tax Information</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .property-info { background: #f5f5f5; padding: 15px; margin: 10px 0; }
+        .tax-record { border: 1px solid #ddd; margin: 5px 0; padding: 10px; }
+        .paid { background: #e8f5e8; }
+        .unpaid { background: #fee; }
+    </style>
+</head>
+<body>
+    <h1>Property Tax Information</h1>
+    
+    <div class="property-info">
+        <h3>Property Details</h3>
+        <p><strong>Owner:</strong> <%= owner_name[0] %></p>
+        <p><strong>Address:</strong> <%= property_address %></p>
+        <p><strong>Parcel:</strong> <%= parcel_number %></p>
+        <p><strong>Land Value:</strong> <%= land_value %></p>
+        <p><strong>Improvements:</strong> <%= improvements %></p>
+        <p><strong>Total Assessed:</strong> <%= total_assessed_value %></p>
+        <p><strong>Delinquent:</strong> <%= delinquent %></p>
+    </div>
+
+    <div>
+        <h3>Notes</h3>
+        <p><%= notes %></p>
+    </div>
+
+    <div>
+        <h3>Tax History</h3>
+        <% if (tax_history && tax_history.length > 0) { %>
+            <% tax_history.forEach(function(record) { %>
+                <div class="tax-record <%= record.status.toLowerCase() %>">
+                    <strong><%= record.year %> - <%= record.payment_type %></strong><br>
+                    Status: <%= record.status %><br>
+                    Amount Due: <%= record.amount_due %><br>
+                    Amount Paid: <%= record.amount_paid %><br>
+                    Due Date: <%= record.due_date %><br>
+                    <% if (record.paid_date) { %>
+                        Paid Date: <%= record.paid_date %><br>
+                    <% } %>
+                </div>
+            <% }); %>
+        <% } else { %>
+            <p>No tax history available.</p>
+        <% } %>
+    </div>
+
+    <p><small>Authority: <%= taxing_authority %></small></p>
+    <p><small>Processed: <%= processed_date %></small></p>
+</body>
+</html>
