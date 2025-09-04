@@ -1,4 +1,4 @@
-// Author: Nithyananda R S - Improved version matching Maricopa pattern
+// Author: Nithyananda R S - 
 import getBrowserInstance from "../../utils/chromium/browserLaunch.js";
 
 const formatDate = (month, day, year) => {
@@ -81,20 +81,19 @@ const calculateDueDates = (year = getCurrentTaxYear()) => {
     }
 };
 
-// Step 1: Check payment status - equivalent to ac_1
+//equivalent to ac_1
 const dc_1 = async (page, account) => {
     return new Promise(async (resolve, reject) => {
         try {
             const url = `https://darkecountyrealestate.org/Parcel?Parcel=${account}`;
             const status = await page.goto(url, { waitUntil: "domcontentloaded" });
 
-            await page.waitForSelector('#Location');
+            await page.waitForSelector('#Location', { timeout: 90000 });
 
             const paymentStatus = await page.evaluate(() => {
                 try {
                     const billTable = document.querySelector('table[title*="Taxes"]');
-                    if (!billTable) return "$0.00"; // Equivalent to paid status in Maricopa
-
+                    if (!billTable) return "$0.00";
                     const title = billTable.getAttribute('title');
                     const yearMatch = title?.match(/\d{4}/);
                     if (!yearMatch) return "$0.00";
@@ -118,13 +117,13 @@ const dc_1 = async (page, account) => {
                     const totalDue = firstHalfDue + secondHalfDue;
                     const totalPaid = firstHalfPaid + secondHalfPaid;
 
-                    // Return payment status like Maricopa's $0.00 pattern
+                
                     if (totalDue <= 0 || (totalPaid > 0 && totalDue <= 0.01)) {
-                        return "$0.00"; // All paid
+                        return "$0.00"; 
                     } else if (firstHalfPaid > 0 && secondHalfDue > 0) {
-                        return "PARTIAL"; // Partial payment
+                        return "PARTIAL"; 
                     } else {
-                        return `$${totalDue.toFixed(2)}`; // Amount due
+                        return `$${totalDue.toFixed(2)}`; 
                     }
                 } catch (error) {
                     console.error('Error in page evaluation:', error);
@@ -140,11 +139,9 @@ const dc_1 = async (page, account) => {
     });
 };
 
-// Step 2: Extract basic property data - equivalent to ac_2
 const dc_2 = async (page, paid_status, account) => {
     return new Promise(async (resolve, reject) => {
         try {
-            // Already on the correct page from dc_1
             const page_data = await page.evaluate(() => {
                 const datum = {
                     processed_date: new Date().toISOString().split("T")[0],
@@ -164,39 +161,35 @@ const dc_2 = async (page, paid_status, account) => {
                     tax_history: []
                 };
 
-                const findTableValue = (tableId, rowIndex, selector) => {
-                    try {
-                        const table = document.querySelector(`#${tableId} .table`);
-                        if (!table) return "N/A";
-                        const row = table.querySelector(`tr:nth-child(${rowIndex})`);
-                        return row?.querySelector(selector)?.textContent?.trim() || "N/A";
-                    } catch (error) {
-                        console.error('Error finding table value:', error);
-                        return "N/A";
-                    }
-                };
-
                 try {
-                    datum.owner_name[0] = findTableValue('Location', 2, '.TableValue');
-                    datum.property_address = findTableValue('Location', 3, '.TableValue');
-
-                    const valuationRow = document.querySelector('.table-responsive .table tbody tr:first-child');
-                    if (valuationRow) {
-                        datum.land_value = valuationRow.querySelector('td[headers="appraised appraisedLand"]')?.textContent?.trim() || "N/A";
-                        datum.improvements = valuationRow.querySelector('td[headers="appraised appraisedImprovements"]')?.textContent?.trim() || "N/A";
-                        datum.total_assessed_value = valuationRow.querySelector('td[headers="assessed assessedTotal"]')?.textContent?.trim() || "N/A";
-                        datum.total_taxable_value = datum.total_assessed_value;
+                    // Use more specific selectors for reliability
+                    const locationTable = document.querySelector('#Location .table');
+                    if (locationTable) {
+                        const ownerRow = locationTable.querySelector('tr:nth-child(2)');
+                        const addressRow = locationTable.querySelector('tr:nth-child(3)');
+                        datum.owner_name[0] = ownerRow?.querySelector('.TableValue')?.textContent?.trim() || "N/A";
+                        datum.property_address = addressRow?.querySelector('.TableValue')?.textContent?.trim() || "N/A";
                     }
+
+                    const valuationTable = document.querySelector('.table-responsive .table');
+                    if (valuationTable) {
+                        const firstDataRow = valuationTable.querySelector('tbody tr:first-child');
+                        if (firstDataRow) {
+                            datum.land_value = firstDataRow.querySelector('td[headers="appraised appraisedLand"]')?.textContent?.trim()?.split('(')[0]?.trim() || "N/A";
+                            datum.improvements = firstDataRow.querySelector('td[headers="appraised appraisedImprovements"]')?.textContent?.trim() || "N/A";
+                            datum.total_assessed_value = firstDataRow.querySelector('td[headers="assessed assessedTotal"]')?.textContent?.trim() || "N/A";
+                            datum.total_taxable_value = datum.total_assessed_value;
+                        }
+                    }
+
                 } catch (error) {
-                    console.error('Error extracting property data:', error);
+                    console.error('Error extracting data:', error);
                 }
 
                 return datum;
             });
 
             page_data.parcel_number = account;
-
-            // Set notes and delinquent status like Maricopa pattern
             if (paid_status === "$0.00") {
                 page_data.notes = "ALL PRIORS ARE PAID, 2024-2025 TAXES ARE PAID, NORMALLY TAXES ARE PAID SEMI-ANNUALLY, NORMAL DUE DATES ARE 02/21 & 07/18";
                 page_data.delinquent = "NONE";
@@ -219,7 +212,6 @@ const dc_2 = async (page, paid_status, account) => {
     });
 };
 
-// Handle paid taxes - equivalent to ac_paid
 const dc_paid = async (page, data) => {
     return new Promise(async (resolve, reject) => {
         try {
@@ -266,16 +258,29 @@ const dc_paid = async (page, data) => {
                             };
 
                             const isFirstHalf = cycle.startsWith("1-");
-                            if (isFirstHalf) {
-                                const amount = firstHalf.replace(/[^0-9.-]+/g, "");
-                                const formattedAmount = `$${parseFloat(amount || "0").toFixed(2)}`;
+                            const isSecondHalf = cycle.startsWith("2-");
+                            const firstHalfAmount = parseFloat(firstHalf.replace(/[^0-9.-]+/g, "")) || 0;
+                            const secondHalfAmount = parseFloat(secondHalf.replace(/[^0-9.-]+/g, "")) || 0;
+
+                            if (firstHalfAmount > 0 && secondHalfAmount > 0) {
+                                // Annual payment case
+                                const totalAmount = firstHalfAmount + secondHalfAmount;
+                                const formattedAmount = `$${totalAmount.toFixed(2)}`;
+                                th_data.base_amount = formattedAmount;
+                                th_data.amount_paid = formattedAmount;
+                                th_data.payment_type = "Annual";
+                                th_data.due_date = `07/18/${year}`; // The last due date for the annual payment
+                                th_data.delq_date = `07/19/${year}`;
+                            } else if (isFirstHalf && firstHalfAmount > 0) {
+                                // First half payment
+                                const formattedAmount = `$${firstHalfAmount.toFixed(2)}`;
                                 th_data.base_amount = formattedAmount;
                                 th_data.amount_paid = formattedAmount;
                                 th_data.due_date = `02/21/${year}`;
                                 th_data.delq_date = `02/22/${year}`;
-                            } else {
-                                const amount = secondHalf.replace(/[^0-9.-]+/g, "");
-                                const formattedAmount = `$${parseFloat(amount || "0").toFixed(2)}`;
+                            } else if (isSecondHalf && secondHalfAmount > 0) {
+                                // Second half payment
+                                const formattedAmount = `$${secondHalfAmount.toFixed(2)}`;
                                 th_data.base_amount = formattedAmount;
                                 th_data.amount_paid = formattedAmount;
                                 th_data.due_date = `07/18/${year}`;
@@ -296,10 +301,7 @@ const dc_paid = async (page, data) => {
             });
 
             data.tax_history = page_content;
-
-            // Update payment type based on number of payments
-            if (data.tax_history.length === 1) {
-                data.tax_history[0].payment_type = "Annual";
+            if (data.tax_history.length > 0 && data.tax_history[0].payment_type === "Annual") {
                 data.notes = data.notes.replace("SEMI-ANNUALLY", "ANNUALLY");
             }
 
@@ -310,8 +312,6 @@ const dc_paid = async (page, data) => {
         }
     });
 };
-
-// Handle unpaid taxes - equivalent to ac_unpaid  
 const dc_unpaid = async (page, data) => {
     return new Promise(async (resolve, reject) => {
         try {
@@ -340,8 +340,6 @@ const dc_unpaid = async (page, data) => {
                             const dueSecondHalf = dueCells[3]?.textContent?.trim() || "";
 
                             const parseAmount = (str) => parseFloat(str.replace(/[^0-9.-]+/g, "")) || 0;
-
-                            // Add First Half if unpaid
                             if (parseAmount(dueFirstHalf) > 0) {
                                 let th_data = {
                                     jurisdiction: "County",
@@ -359,8 +357,6 @@ const dc_unpaid = async (page, data) => {
                                 };
                                 temp.push(th_data);
                             }
-
-                            // Add Second Half if unpaid
                             if (parseAmount(dueSecondHalf) > 0) {
                                 let th_data = {
                                     jurisdiction: "County",
@@ -398,8 +394,6 @@ const dc_unpaid = async (page, data) => {
         }
     });
 };
-
-// Main orchestrator function - equivalent to account_search
 const account_search = async (page, account) => {
     return new Promise(async (resolve, reject) => {
         try {
@@ -443,11 +437,9 @@ const account_search = async (page, account) => {
     });
 };
 
-// Main search function - matches Maricopa exactly
+// Main search function
 const search = async (req, res) => {
     const { fetch_type, account } = req.body;
-    let browser = null;
-    let context = null;
     
     try {
         if (!fetch_type && (fetch_type != "html" || fetch_type != "api")) {
@@ -457,13 +449,13 @@ const search = async (req, res) => {
             });
         }
 
-        browser = await getBrowserInstance();
-        const page = await browser.newPage();
+        const browser = await getBrowserInstance();
+        const context = await browser.createBrowserContext();
+        const page = await context.newPage();
         
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36');
         page.setDefaultNavigationTimeout(90000);
 
-        // INTERCEPT REQUESTS AND BLOCK CERTAIN RESOURCE TYPES
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             if (req.resourceType() === 'stylesheet' || req.resourceType() === 'font' || req.resourceType() === 'image') {
@@ -474,7 +466,6 @@ const search = async (req, res) => {
         });
 
         if (fetch_type == "html") {
-            // FRONTEND POINT
             account_search(page, account)
                 .then((data) => {
                     res.status(200).render("parcel_data_official", data);
@@ -487,15 +478,10 @@ const search = async (req, res) => {
                     });
                 })
                 .finally(async () => {
-                    if (page && !page.isClosed()) {
-                        await page.close();
-                    }
-                    if (browser && browser.isConnected()) {
-                        await browser.close();
-                    }
+                    await context.close();
                 });
         } else if (fetch_type == "api") {
-            // API ENDPOINT
+
             account_search(page, account)
                 .then((data) => {
                     res.status(200).json({
@@ -510,30 +496,11 @@ const search = async (req, res) => {
                     });
                 })
                 .finally(async () => {
-                    if (page && !page.isClosed()) {
-                        await page.close();
-                    }
-                    if (browser && browser.isConnected()) {
-                        await browser.close();
-                    }
+                    await context.close();
                 });
         }
-
     } catch (error) {
         console.log(error);
-        
-        // Clean up resources
-        try {
-            if (page && !page.isClosed()) {
-                await page.close();
-            }
-            if (browser && browser.isConnected()) {
-                await browser.close();
-            }
-        } catch (cleanupError) {
-            console.log('Cleanup error:', cleanupError);
-        }
-
         if (fetch_type == "html") {
             res.status(200).render('error_data', {
                 error: true,
@@ -547,5 +514,4 @@ const search = async (req, res) => {
         }
     }
 };
-
 export { search };
